@@ -47,6 +47,7 @@ bool isPrintf(const llvm::StringRef &funcName) { return funcName.equals("printf"
 bool isLLVMDebug(const llvm::StringRef &funcName) {
   return funcName.equals("llvm.dbg.declare") || funcName.equals("llvm.dbg.value");
 }
+
 }  // namespace
 
 FunctionSummary race::generateFunctionSummary(const llvm::Function *func) {
@@ -116,6 +117,14 @@ FunctionSummary race::generateFunctionSummary(const llvm::Function &func) {
           instructions.push_back(std::make_shared<OpenMPSingleEnd>(callInst));
         } else if (OpenMPModel::isBarrier(funcName)) {
           instructions.push_back(std::make_shared<OpenMPBarrier>(callInst));
+        } else if (OpenMPModel::isReduceStart(funcName)) {
+          instructions.push_back(std::make_shared<OpenMPReduceStart>(callInst));
+        } else if (OpenMPModel::isReduceEnd(funcName)) {
+          instructions.push_back(std::make_shared<OpenMPReduceEnd>(callInst));
+        } else if (OpenMPModel::isReduceNowaitStart(funcName)) {
+          instructions.push_back(std::make_shared<OpenMPReduceNowaitStart>(callInst));
+        } else if (OpenMPModel::isReduceNowaitEnd(funcName)) {
+          instructions.push_back(std::make_shared<OpenMPReduceNowaitEnd>(callInst));
         } else if (OpenMPModel::isFork(funcName)) {
           // duplicate omp preprocessing should duplicate all omp fork calls
           auto ompFork = std::make_shared<OpenMPFork>(callInst);

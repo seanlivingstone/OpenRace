@@ -276,4 +276,10 @@ using OmpForFini = CallIRImpl<IR::Type::OpenMPForFini>;
 using OpenMPSingleStart = CallIRImpl<IR::Type::OpenMPSingleStart>;
 using OpenMPSingleEnd = CallIRImpl<IR::Type::OpenMPSingleEnd>;
 
+using OpenMPReduceStart = CallIRImpl<IR::Type::OpenMPReduceStart>;
+using OpenMPReduceEnd = CallIRImpl<IR::Type::OpenMPReduceEnd>;
+
+using OpenMPReduceNowaitStart = CallIRImpl<IR::Type::OpenMPReduceNowaitStart>;
+using OpenMPReduceNowaitEnd = CallIRImpl<IR::Type::OpenMPReduceNowaitEnd>;
+
 }  // namespace race

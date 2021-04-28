@@ -46,6 +46,12 @@ inline bool isSingleEnd(const llvm::StringRef& funcName) { return funcName.equal
 
 inline bool isBarrier(const llvm::StringRef& funcName) { return funcName.equals("__kmpc_barrier"); }
 
+inline bool isReduceStart(const llvm::StringRef& funcName) { return funcName.equals("__kmpc_reduce"); }
+inline bool isReduceEnd(const llvm::StringRef& funcName) { return funcName.equals("__kmpc_end_reduce"); }
+
+inline bool isReduceNowaitStart(const llvm::StringRef& funcName) { return funcName.equals("__kmpc_reduce_nowait"); }
+inline bool isReduceNowaitEnd(const llvm::StringRef& funcName) { return funcName.equals("__kmpc_end_reduce_nowait"); }
+
 // Used only for debug to try and catch unhandled OpenMP calls
 inline bool isOpenMP(const llvm::StringRef& funcName) { return funcName.startswith("__kmpc"); }
 
