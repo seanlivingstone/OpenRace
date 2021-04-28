@@ -16,6 +16,16 @@ limitations under the License.
 
 namespace OpenMPModel {
 
+namespace {
+// return true of funcName equals any name in names
+bool matchesAny(const llvm::StringRef& funcName, const std::vector<llvm::StringRef>& names) {
+  for (auto const& name : names) {
+    if (funcName.equals(name)) return true;
+  }
+  return false;
+}
+}  // namespace
+
 inline bool isFork(const llvm::StringRef& funcName) { return funcName.equals("__kmpc_fork_call"); }
 inline bool isFork(const llvm::CallBase* callInst) {
   if (!callInst) return false;
@@ -24,7 +34,11 @@ inline bool isFork(const llvm::CallBase* callInst) {
   return isFork(func->getName());
 }
 
-inline bool isForStaticInit(const llvm::StringRef& funcName) { return funcName.equals("__kmpc_for_static_init_4"); }
+inline bool isForStaticInit(const llvm::StringRef& funcName) {
+  // Each version functions the same, only argument types slightly differ
+  return matchesAny(funcName, {"__kmpc_for_static_init_4", "__kmpc_for_static_init_4u", "__kmpc_for_static_init_8",
+                               "__kmpc_for_static_init_8u"});
+}
 inline bool isForStaticFini(const llvm::StringRef& funcName) { return funcName.equals("__kmpc_for_static_fini"); }
 
 inline bool isSingleStart(const llvm::StringRef& funcName) { return funcName.equals("__kmpc_single"); }
