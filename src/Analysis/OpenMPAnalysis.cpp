@@ -45,6 +45,26 @@ bool OpenMPAnalysis::canIndexOverlap(const race::MemAccessEvent* event1, const r
 }
 
 namespace {
+
+// return true if both events belong to the same OpenMP team
+bool _inSameTeam(const Event* event1, const Event* event2) {
+  // Check both spawn events are OpenMP forks
+  auto e1Spawn = event1->getThread().spawnSite;
+  if (!e1Spawn || (e1Spawn.value()->getIRInst()->type != IR::Type::OpenMPFork)) return false;
+
+  auto e2Spawn = event2->getThread().spawnSite;
+  if (!e2Spawn || (e2Spawn.value()->getIRInst()->type != IR::Type::OpenMPFork)) return false;
+
+  // Check they are spawned from same thread
+  if (e1Spawn.value()->getThread().id != e2Spawn.value()->getThread().id) return false;
+
+  // Check that they are adjacent. Only matching omp forks can be adjacent, because they are always followed by joins
+  auto const eid1 = e1Spawn.value()->getID();
+  auto const eid2 = e2Spawn.value()->getID();
+  auto const diff = (eid1 > eid2) ? (eid1 - eid2) : (eid2 - eid1);
+  return diff == 1;
+}
+
 // Get list of (non-nested) event regions
 // template definition can be in cpp as long as we dont expose the template outside of this file
 template <IR::Type Start, IR::Type End>
@@ -74,11 +94,56 @@ std::vector<Region> getRegions(const ThreadTrace& thread) {
   return regions;
 }
 
-auto constexpr getLoopRegions = getRegions<IR::Type::OpenMPForInit, IR::Type::OpenMPForFini>;
-auto constexpr getSingleRegions = getRegions<IR::Type::OpenMPSingleStart, IR::Type::OpenMPSingleEnd>;
+auto constexpr _getLoopRegions = getRegions<IR::Type::OpenMPForInit, IR::Type::OpenMPForFini>;
+
+// return true if event is inside of a region marked by Start and End
+// see getRegions for more detail on regions
+template <IR::Type Start, IR::Type End>
+bool in(const race::Event* event) {
+  auto const regions = getRegions<Start, End>(event->getThread());
+  auto const eid = event->getID();
+  for (auto const& region : regions) {
+    if (region.contains(eid)) return true;
+    // Break early if we pass the eid without finding matching region
+    if (region.end > eid) return false;
+  }
+  return false;
+}
+
+auto constexpr _inReduce = in<IR::Type::OpenMPReduceStart, IR::Type::OpenMPReduceEnd>;
+
+// return true if both events are inside of the region marked by Start and End
+// see getRegions for more detail on regions
+template <IR::Type Start, IR::Type End>
+bool inSame(const Event* event1, const Event* event2) {
+  assert(_inSameTeam(event1, event2) && "events must be in same omp team");
+
+  auto const eid1 = event1->getID();
+  auto const eid2 = event2->getID();
+
+  // Trace events are ordered, so we can save time by finding the region containing the smaller
+  // ID first, and then checking if that region also contains the bigger ID.
+  auto const minID = (eid1 < eid2) ? eid1 : eid2;
+  auto const maxID = (eid1 > eid2) ? eid1 : eid2;
+
+  // Omp threads in same team will have identical traces so we only need one set of events
+  auto const regions = getRegions<Start, End>(event1->getThread());
+  for (auto const& region : regions) {
+    // If region contains one, check if it also contains the other
+    if (region.contains(minID)) return region.contains(maxID);
+
+    // End early if end of this region passes smaller event ID
+    if (region.end > minID) return false;
+  }
+  return false;
+}
+
+auto const _inSameSingleBlock = inSame<IR::Type::OpenMPSingleStart, IR::Type::OpenMPSingleEnd>;
+auto const _inSameReduceNowait = inSame<IR::Type::OpenMPReduceNowaitStart, IR::Type::OpenMPReduceNowaitEnd>;
+
 }  // namespace
 
-const std::vector<OpenMPAnalysis::LoopRegion>& OpenMPAnalysis::getOmpForLoops(const ThreadTrace& thread) {
+const std::vector<OpenMPAnalysis::LoopRegion>& OpenMPAnalysis::getOmpForLoopsCached(const ThreadTrace& thread) {
   // Check if result is already computed
   auto it = ompForLoops.find(thread.id);
   if (it != ompForLoops.end()) {
@@ -86,14 +151,14 @@ const std::vector<OpenMPAnalysis::LoopRegion>& OpenMPAnalysis::getOmpForLoops(co
   }
 
   // Else find the loop regions
-  auto const loopRegions = getLoopRegions(thread);
+  auto const loopRegions = _getLoopRegions(thread);
   ompForLoops[thread.id] = loopRegions;
 
   return ompForLoops.at(thread.id);
 }
 
 bool OpenMPAnalysis::inParallelFor(const race::MemAccessEvent* event) {
-  auto loopRegions = getOmpForLoops(event->getThread());
+  auto loopRegions = getOmpForLoopsCached(event->getThread());
   auto const eid = event->getID();
   for (auto const& region : loopRegions) {
     if (region.contains(eid)) return true;
@@ -114,43 +179,14 @@ bool OpenMPAnalysis::isLoopArrayAccess(const race::MemAccessEvent* event1, const
   return inParallelFor(event1) && inParallelFor(event2);
 }
 
-bool OpenMPAnalysis::inSameTeam(const Event* event1, const Event* event2) const {
-  // Check both spawn events are OpenMP forks
-  auto e1Spawn = event1->getThread().spawnSite;
-  if (!e1Spawn || (e1Spawn.value()->getIRInst()->type != IR::Type::OpenMPFork)) return false;
-
-  auto e2Spawn = event2->getThread().spawnSite;
-  if (!e2Spawn || (e2Spawn.value()->getIRInst()->type != IR::Type::OpenMPFork)) return false;
-
-  // Check they are spawned from same thread
-  if (e1Spawn.value()->getThread().id != e2Spawn.value()->getThread().id) return false;
-
-  // Check that they are adjacent. Only matching omp forks can be adjacent, because they are always followed by joins
-  auto const eid1 = e1Spawn.value()->getID();
-  auto const eid2 = e2Spawn.value()->getID();
-  auto const diff = (eid1 > eid2) ? (eid1 - eid2) : (eid2 - eid1);
-  return diff == 1;
-}
+bool OpenMPAnalysis::inSameTeam(const Event* event1, const Event* event2) const { return _inSameTeam(event1, event2); }
 
 bool OpenMPAnalysis::inSameSingleBlock(const Event* event1, const Event* event2) const {
-  assert(inSameTeam(event1, event2));
+  return _inSameSingleBlock(event1, event2);
+}
 
-  auto const eid1 = event1->getID();
-  auto const eid2 = event2->getID();
+bool OpenMPAnalysis::inReduce(const Event* event) const { return _inReduce(event); }
 
-  // Trace events are ordered, so we can save time by finding the region containing the smaller
-  // ID first, and then checking if that region also contains the bigger ID.
-  auto const minID = (eid1 < eid2) ? eid1 : eid2;
-  auto const maxID = (eid1 > eid2) ? eid1 : eid2;
-
-  // Omp threads in same team will have identical traces so we only need one set of events
-  auto const singleRegions = getSingleRegions(event1->getThread());
-  for (auto const& region : singleRegions) {
-    // If region contains one, check if it also contains the other
-    if (region.contains(minID)) return region.contains(maxID);
-
-    // End early if end of this region passes smaller event ID
-    if (region.end > minID) return false;
-  }
-  return false;
+bool OpenMPAnalysis::inSameReduceNowait(const Event* event1, const Event* event2) const {
+  return _inSameReduceNowait(event1, event2);
 }

@@ -38,7 +38,7 @@ class OpenMPAnalysis {
   std::map<ThreadID, std::vector<LoopRegion>> ompForLoops;
 
   // get cached list of loop regions, else create them
-  const std::vector<LoopRegion>& getOmpForLoops(const ThreadTrace& trace);
+  const std::vector<LoopRegion>& getOmpForLoopsCached(const ThreadTrace& trace);
 
   bool inParallelFor(const race::MemAccessEvent* event);
 
@@ -57,6 +57,12 @@ class OpenMPAnalysis {
   // return true if both events are in the same single region
   // Call assumes the events are on different threads but in the same team
   bool inSameSingleBlock(const Event* event1, const Event* event2) const;
+
+  // return true if event is inside of a reduce region
+  bool inReduce(const Event* event1) const;
+
+  // return true if both events are inside of the same reduce nowait region
+  bool inSameReduceNowait(const Event* event1, const Event* event2) const;
 };
 
 }  // namespace race
