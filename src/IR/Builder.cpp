@@ -11,6 +11,8 @@ limitations under the License.
 
 #include "IR/Builder.h"
 
+#include <llvm/Analysis/PostDominators.h>
+#include <llvm/IR/Dominators.h>
 #include <llvm/IR/Instructions.h>
 
 #include "IR/IRImpls.h"
@@ -119,10 +121,12 @@ FunctionSummary race::generateFunctionSummary(const llvm::Function &func) {
           instructions.push_back(std::make_shared<OpenMPBarrier>(callInst));
         } else if (OpenMPModel::isReduceStart(funcName)) {
           instructions.push_back(std::make_shared<OpenMPReduceStart>(callInst));
+          instructions.push_back(std::make_shared<OpenMPReduce>(callInst));
         } else if (OpenMPModel::isReduceEnd(funcName)) {
           instructions.push_back(std::make_shared<OpenMPReduceEnd>(callInst));
         } else if (OpenMPModel::isReduceNowaitStart(funcName)) {
           instructions.push_back(std::make_shared<OpenMPReduceNowaitStart>(callInst));
+          instructions.push_back(std::make_shared<OpenMPReduce>(callInst));
         } else if (OpenMPModel::isReduceNowaitEnd(funcName)) {
           instructions.push_back(std::make_shared<OpenMPReduceNowaitEnd>(callInst));
         } else if (OpenMPModel::isFork(funcName)) {
