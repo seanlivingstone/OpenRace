@@ -54,7 +54,9 @@ inline bool isReduceNowaitEnd(const llvm::StringRef& funcName) { return funcName
 
 // Return true for omp calls that do not need to be modelled (e.g. push_num_threads)
 inline bool isNoEffect(const llvm::StringRef& funcName) {
-  return matchesAny(funcName, {"__kmpc_push_num_threads", "__kmpc_global_thread_num"});
+  return matchesAny(funcName, {"__kmpc_push_num_threads", "__kmpc_global_thread_num"})
+         // we dont rely on reduce end to find end of reduce region
+         || isReduceEnd(funcName) || isReduceNowaitEnd(funcName);
 }
 
 // Used only for debug to try and catch unhandled OpenMP calls

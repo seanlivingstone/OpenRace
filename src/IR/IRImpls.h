@@ -276,21 +276,6 @@ using OmpForFini = CallIRImpl<IR::Type::OpenMPForFini>;
 using OpenMPSingleStart = CallIRImpl<IR::Type::OpenMPSingleStart>;
 using OpenMPSingleEnd = CallIRImpl<IR::Type::OpenMPSingleEnd>;
 
-using OpenMPReduceStart = CallIRImpl<IR::Type::OpenMPReduceStart>;
-using OpenMPReduceEnd = CallIRImpl<IR::Type::OpenMPReduceEnd>;
-
-using OpenMPReduceNowaitStart = CallIRImpl<IR::Type::OpenMPReduceNowaitStart>;
-using OpenMPReduceNowaitEnd = CallIRImpl<IR::Type::OpenMPReduceNowaitEnd>;
-
-class OpenMPReduce : public CallIR {
- public:
-  OpenMPReduce(const llvm::CallBase *inst) : CallIR(inst, Type::OpenMPReduce) {}
-
-  // Get the instruction marking the end of the reduction code
-  const llvm::Instruction *getEnd() const;
-
-  // return true if inst is inside of this reduce
-  bool contains(const llvm::Instruction *inst) const;
-};
+using OpenMPReduce = CallIRImpl<IR::Type::OpenMPReduce>;
 
 }  // namespace race

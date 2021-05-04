@@ -53,10 +53,6 @@ class IR {
     OpenMPForFini,
     OpenMPSingleStart,
     OpenMPSingleEnd,
-    OpenMPReduceStart,
-    OpenMPReduceEnd,
-    OpenMPReduceNowaitStart,
-    OpenMPReduceNowaitEnd,
     OpenMPReduce,
     END_Call
   } type;

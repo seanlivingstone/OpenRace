@@ -111,8 +111,6 @@ bool in(const race::Event* event) {
   return false;
 }
 
-auto constexpr _inReduce = in<IR::Type::OpenMPReduceStart, IR::Type::OpenMPReduceEnd>;
-
 // return true if both events are inside of the region marked by Start and End
 // see getRegions for more detail on regions
 template <IR::Type Start, IR::Type End>
@@ -140,7 +138,6 @@ bool inSame(const Event* event1, const Event* event2) {
 }
 
 auto const _inSameSingleBlock = inSame<IR::Type::OpenMPSingleStart, IR::Type::OpenMPSingleEnd>;
-auto const _inSameReduceNowait = inSame<IR::Type::OpenMPReduceNowaitStart, IR::Type::OpenMPReduceNowaitEnd>;
 
 }  // namespace
 
@@ -266,4 +263,6 @@ bool OpenMPAnalysis::inSameReduce(const Event* event1, const Event* event2) cons
       if (contains1 || contains2) return false;
     }
   }
+
+  return false;
 }
