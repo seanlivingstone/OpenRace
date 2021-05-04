@@ -186,92 +186,84 @@ bool OpenMPAnalysis::inSameSingleBlock(const Event* event1, const Event* event2)
   return _inSameSingleBlock(event1, event2);
 }
 
-bool OpenMPAnalysis::inReduce(const Event* event) const { return _inReduce(event); }
+std::vector<const llvm::BasicBlock*>& ReduceAnalysis::computeGuardedBlocks(ReduceInst reduce) const {
+  assert(reduceBlocks.find(reduce) == reduceBlocks.end() &&
+         "Should not call compute if results have already been computed");
 
-namespace {
-struct ReduceAnalysis {
-  using ReduceInst = const llvm::Instruction*;
-  using Blocks = std::vector<const llvm::BasicBlock*>;
+  // compute results, cache them, then return them
+  auto& blocks = reduceBlocks[reduce];
 
-  // Map of Reduce inst and the blocks that belong to that reduction
-  std::map<ReduceInst, Blocks> reductionBlocks;
+  auto const switchInst = llvm::dyn_cast<llvm::SwitchInst>(reduce->getNextNode());
+  assert(switchInst && "instruction after reduce should always be switch");
 
-  // compute blocks guarded by reduce and insert into cache
-  const Blocks& computeGuardedBlocks(ReduceInst inst) {
-    // compute results, cache them, then return them
-    auto& blocks = reductionBlocks[inst];
-    assert(blocks.empty() && "Should not call compute if results have already been computed");
+  // Default dest marks the end of the reduce
+  auto const exitBlock = switchInst->getDefaultDest();
 
-    auto const switchInst = llvm::dyn_cast<llvm::SwitchInst>(inst->getNextNode());
-    assert(switchInst && "instruction after reduce should always be switch");
+  std::vector<const llvm::BasicBlock*> worklist;
+  std::set<const llvm::BasicBlock*> visited;
+  for (auto const succ : successors(switchInst)) {
+    worklist.push_back(succ);
+  }
 
-    // Default dest marks the end of the reduce
-    auto const exitBlock = switchInst->getDefaultDest();
+  while (!worklist.empty()) {
+    auto block = worklist.back();
+    worklist.pop_back();
+    visited.insert(block);
 
-    std::vector<const llvm::BasicBlock*> worklist;
-    std::set<const llvm::BasicBlock*> visited;
-    for (auto const succ : successors(switchInst)) {
-      worklist.push_back(succ);
-    }
+    // Stop traversing when we reach end of reduce code
+    if (block == exitBlock) continue;
 
-    while (!worklist.empty()) {
-      auto block = worklist.back();
-      worklist.pop_back();
-      visited.insert(block);
+    // add to list of blocks covered by this reduce
+    blocks.push_back(block);
 
-      // Stop traversing when we reach end of reduce code
-      if (block == exitBlock) continue;
+    // sanity check that all succ must eventually reach exitBlock
+    assert(llvm::succ_size(block) > 0 && "block should have successors");
 
-      // add to list of blocks covered by this reduce
-      blocks.push_back(block);
-
-      // sanity check that all succ must eventually reach exitBlock
-      assert(llvm::succ_size(block) > 0 && "block should have successors");
-
-      // Keep traversing
-      for (auto const succ : llvm::successors(block)) {
+    // Keep traversing
+    for (auto const succ : llvm::successors(block)) {
+      if (visited.find(succ) == visited.end()) {
         if (visited.find(succ) == visited.end()) {
-          if (visited.find(succ) == visited.end()) {
-            worklist.push_back(succ);
-          }
+          worklist.push_back(succ);
         }
       }
     }
-
-    return blocks;
   }
 
-  const Blocks& getGuardedBlocks(ReduceInst inst) {
-    // first check cached results
-    auto it = reductionBlocks.find(inst);
-    if (it != reductionBlocks.end()) {
-      return it->second;
-    }
+  return blocks;
+}
 
-    return computeGuardedBlocks(inst);
+const std::vector<const llvm::BasicBlock*>& ReduceAnalysis::getReduceBlocks(ReduceInst reduce) const {
+  // Check cache first
+  if (auto it = reduceBlocks.find(reduce); it != reduceBlocks.end()) {
+    return it->second;
   }
 
-  bool reduceContains(ReduceInst reduce, const llvm::Instruction* inst) {
-    auto const& blocks = getGuardedBlocks(reduce);
-    return std::find(blocks.begin(), blocks.end(), inst->getParent()) != blocks.end();
-  }
-};
-}  // namespace
+  // Else compute
+  return computeGuardedBlocks(reduce);
+}
 
-bool OpenMPAnalysis::inSameReduceNowait(const Event* event1, const Event* event2) const {
-  ReduceAnalysis ra;
+bool ReduceAnalysis::reduceContains(const llvm::Instruction* reduce, const llvm::Instruction* inst) const {
+  auto const& blocks = getReduceBlocks(reduce);
+  return std::find(blocks.begin(), blocks.end(), inst->getParent()) != blocks.end();
+}
 
+bool OpenMPAnalysis::inSameReduce(const Event* event1, const Event* event2) const {
+  // Find reduce events
   for (auto const& event : event1->getThread().getEvents()) {
+    // If an event e is inside of a reduce block it must occur *after* the reduce event
+    // so, if either event is encountered before finding a reduce that contains both event1 and event2
+    // we know that they are not in the same reduce block
     if (event->getID() == event1->getID() || event->getID() == event2->getID()) return false;
 
+    // Once a reduce is found, check that it contains both events (true)
+    // or that it contains neither event (keep searching)
+    // if it contains one but not the other, return false
     if (event->getIRInst()->type == IR::Type::OpenMPReduce) {
       auto const reduce = event->getInst();
-      auto const contains1 = ra.reduceContains(reduce, event1->getInst());
-      auto const contains2 = ra.reduceContains(reduce, event2->getInst());
+      auto const contains1 = reduceAnalysis.reduceContains(reduce, event1->getInst());
+      auto const contains2 = reduceAnalysis.reduceContains(reduce, event2->getInst());
       if (contains1 && contains2) return true;
       if (contains1 || contains2) return false;
     }
   }
-
-  return false;
 }
