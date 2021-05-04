@@ -209,6 +209,7 @@ struct ReduceAnalysis {
     auto const exitBlock = switchInst->getDefaultDest();
 
     std::vector<const llvm::BasicBlock*> worklist;
+    std::set<const llvm::BasicBlock*> visited;
     for (auto const succ : successors(switchInst)) {
       worklist.push_back(succ);
     }
@@ -216,6 +217,7 @@ struct ReduceAnalysis {
     while (!worklist.empty()) {
       auto block = worklist.back();
       worklist.pop_back();
+      visited.insert(block);
 
       // Stop traversing when we reach end of reduce code
       if (block == exitBlock) continue;
@@ -228,7 +230,11 @@ struct ReduceAnalysis {
 
       // Keep traversing
       for (auto const succ : llvm::successors(block)) {
-        worklist.push_back(block);
+        if (visited.find(succ) == visited.end()) {
+          if (visited.find(succ) == visited.end()) {
+            worklist.push_back(succ);
+          }
+        }
       }
     }
 

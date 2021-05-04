@@ -3,6 +3,8 @@
 #include <llvm/IR/Function.h>
 #include <llvm/IR/Instructions.h>
 
+#include <set>
+
 using namespace race;
 
 bool race::isDominatedBy(const llvm::Instruction *inst, const llvm::Instruction *pre) {
@@ -10,11 +12,13 @@ bool race::isDominatedBy(const llvm::Instruction *inst, const llvm::Instruction 
   auto const &entryBlock = pre->getFunction()->getEntryBlock();
 
   std::vector<const llvm::BasicBlock *> worklist;
+  std::set<const llvm::BasicBlock *> visited;
   worklist.push_back(inst->getParent());
 
   while (!worklist.empty()) {
     auto const block = worklist.back();
     worklist.pop_back();
+    visited.insert(block);
 
     // stop traversing this path if we hit target block
     if (block == targetBlock) continue;
@@ -24,7 +28,9 @@ bool race::isDominatedBy(const llvm::Instruction *inst, const llvm::Instruction 
 
     // Keep exploring this path
     for (auto const pred : llvm::predecessors(block)) {
-      worklist.push_back(pred);
+      if (visited.find(pred) == visited.end()) {
+        worklist.push_back(pred);
+      }
     }
   }
   return true;
@@ -38,11 +44,13 @@ bool race::isPostDominatedBy(const llvm::Instruction *inst, const llvm::Instruct
   auto const targetBlock = post->getParent();
 
   std::vector<const llvm::BasicBlock *> worklist;
+  std::set<const llvm::BasicBlock *> visited;
   worklist.push_back(inst->getParent());
 
   while (!worklist.empty()) {
     auto const block = worklist.back();
     worklist.pop_back();
+    visited.insert(block);
 
     // stop traversing this path if we hit target block
     if (block == targetBlock) continue;
@@ -52,7 +60,9 @@ bool race::isPostDominatedBy(const llvm::Instruction *inst, const llvm::Instruct
 
     // Keep exploring this path
     for (auto const succ : llvm::successors(block)) {
-      worklist.push_back(succ);
+      if (visited.find(succ) == visited.end()) {
+        worklist.push_back(succ);
+      }
     }
   }
   return true;
