@@ -48,6 +48,7 @@ bool OpenMPAnalysis::canIndexOverlap(const race::MemAccessEvent* event1, const r
 namespace {
 
 // return true if both events belong to the same OpenMP team
+// This function is split out so that it can be called from the template functions below (in, inSame, etc)
 bool _inSameTeam(const Event* event1, const Event* event2) {
   // Check both spawn events are OpenMP forks
   auto e1Spawn = event1->getThread().spawnSite;
@@ -141,7 +142,7 @@ auto const _inSameSingleBlock = inSame<IR::Type::OpenMPSingleStart, IR::Type::Op
 
 }  // namespace
 
-const std::vector<OpenMPAnalysis::LoopRegion>& OpenMPAnalysis::getOmpForLoopsCached(const ThreadTrace& thread) {
+const std::vector<OpenMPAnalysis::LoopRegion>& OpenMPAnalysis::getOmpForLoops(const ThreadTrace& thread) {
   // Check if result is already computed
   auto it = ompForLoops.find(thread.id);
   if (it != ompForLoops.end()) {
@@ -156,7 +157,7 @@ const std::vector<OpenMPAnalysis::LoopRegion>& OpenMPAnalysis::getOmpForLoopsCac
 }
 
 bool OpenMPAnalysis::inParallelFor(const race::MemAccessEvent* event) {
-  auto loopRegions = getOmpForLoopsCached(event->getThread());
+  auto loopRegions = getOmpForLoops(event->getThread());
   auto const eid = event->getID();
   for (auto const& region : loopRegions) {
     if (region.contains(eid)) return true;
@@ -189,6 +190,38 @@ std::vector<const llvm::BasicBlock*>& ReduceAnalysis::computeGuardedBlocks(Reduc
 
   // compute results, cache them, then return them
   auto& blocks = reduceBlocks[reduce];
+
+  /* We are expecting the reduce code produced by clang to follow a specific pattern:
+    -------------------------------------------------
+      %15 = call i32 @__kmpc_reduce(...)
+      switch i32 %15, label %.omp.reduction.default [
+        i32 1, label %.omp.reduction.case1
+        i32 2, label %.omp.reduction.case2
+      ]
+
+    .omp.reduction.case1:
+      ...
+      call void @__kmpc_end_reduce(...)
+      br label %.omp.reduction.default
+
+    .omp.reduction.case2:
+      ...
+      call void @__kmpc_end_reduce(...)
+      br label %.omp.reduction.default
+
+    .omp.reduction.default:
+      ...
+    -------------------------------------------------
+
+    Our logic makes the following assumptions:
+      - There is a switch after the reduce call
+      - the default case on the switch is the end fo the reduce code
+      - The default case post-dominates the switch
+
+    If these assumptions are true, we can get the blocks that make up
+    the reduction code by getting all blocks that are reachable from the switch but
+    stop when we reach the default case block (end of the reduce code)
+  */
 
   auto const switchInst = llvm::dyn_cast<llvm::SwitchInst>(reduce->getNextNode());
   assert(switchInst && "instruction after reduce should always be switch");

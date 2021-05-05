@@ -62,11 +62,6 @@ Report race::detectRaces(llvm::Module *module, DetectRaceConfig config) {
       if (ompAnalysis.inSameSingleBlock(write, other) || ompAnalysis.inSameReduce(write, other)) {
         return;
       }
-
-      // We assume any event inside of a non-nowait version of reduce can never be part of a race
-      // if (ompAnalysis.inReduce(write) || ompAnalysis.inReduce(other)) {
-      //   return;
-      // }
     }
 
     // Race detected

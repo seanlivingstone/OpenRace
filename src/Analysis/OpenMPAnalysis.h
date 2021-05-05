@@ -57,7 +57,7 @@ class OpenMPAnalysis {
   std::map<ThreadID, std::vector<LoopRegion>> ompForLoops;
 
   // get cached list of loop regions, else create them
-  const std::vector<LoopRegion>& getOmpForLoopsCached(const ThreadTrace& trace);
+  const std::vector<LoopRegion>& getOmpForLoops(const ThreadTrace& trace);
 
   bool inParallelFor(const race::MemAccessEvent* event);
 
